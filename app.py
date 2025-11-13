@@ -62,7 +62,7 @@ function() {{
 """
 
 APP_CSS = """
-#auth-modal {
+#auth-modal, #register-modal, #account-modal {
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.45);
@@ -72,12 +72,31 @@ APP_CSS = """
     padding: 0 16px;
     z-index: 1000;
 }
-#auth-modal > div {
-    width: min(420px, 100%);
+#auth-card, #register-card, #account-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.08);
+    width: min(480px, 96vw);
+    padding: 20px;
 }
-#auth-modal .gr-box, #auth-modal .gr-block, #auth-modal .gr-group {
+#auth-modal .gr-box, #auth-modal .gr-block, #auth-modal .gr-group,
+#register-modal .gr-box, #register-modal .gr-block, #register-modal .gr-group,
+#account-modal .gr-box, #account-modal .gr-block, #account-modal .gr-group {
     border-radius: 12px;
     padding: 24px;
+}
+#register-link {
+    background: transparent;
+    border: none;
+    color: #2563eb;
+    text-decoration: underline;
+    font-size: 0.9rem;
+    width: auto;
+    padding: 4px 0;
+}
+#register-link:hover {
+    color: #1d4ed8;
 }
 #layout {
     min-height: 100vh;
@@ -822,7 +841,7 @@ def hide_modal() -> gr.update:
 
 def update_user_panel(
     auth_state: Dict[str, Any] | None,
-) -> Tuple[str, gr.update, gr.update]:
+) -> Tuple[str, gr.update, gr.update, gr.update]:
     auth_state = auth_state or _default_auth_state()
     if _is_logged_in(auth_state):
         user = auth_state.get("user") or {}
@@ -830,12 +849,14 @@ def update_user_panel(
         info = f"👤 当前用户：**{username}**"
         return (
             info,
+            gr.update(visible=False),
             gr.update(value="账户", visible=True),
             gr.update(visible=True),
         )
     return (
         "👤 当前用户：未登录",
         gr.update(value="登录", visible=True),
+        gr.update(visible=False),
         gr.update(visible=False),
     )
 
@@ -911,19 +932,179 @@ def login_action(auth_state: Dict[str, Any], username: str, password: str):
     )
 
 
-def register_action(username: str, password: str):
-    username = (username or "").strip()
+def open_register_modal_action() -> Tuple[gr.update, gr.update]:
+    return gr.update(visible=True), gr.update(visible=False)
+
+
+def close_register_modal_action() -> Tuple[gr.update, gr.update]:
+    return gr.update(visible=False), gr.update(visible=True)
+
+
+def register_action_ext(
+    account: str,
+    password: str,
+    nickname: str,
+    email: str,
+    wx_id: str,
+    phone_number: str,
+) -> str:
+    account = (account or "").strip()
     password = password or ""
-    if not username or not password:
-        return "注册失败：请输入用户名和密码。"
+    if not account or not password:
+        return "注册失败：账号与密码不能为空。"
+
+    payload = {
+        "username": account,
+        "password": password,
+        "nickname": (nickname or "").strip(),
+        "email": (email or "").strip(),
+        "wx_id": (wx_id or "").strip(),
+        "phone_number": (phone_number or "").strip(),
+    }
+    success, resp = _auth_request("register/", json_data=payload)
+    if not success:
+        return f"注册失败：{resp}"
+    return f"注册成功：{account}，请返回登录窗口。"
+
+
+def open_account_modal_action(
+    auth_state: Dict[str, Any] | None,
+) -> Tuple[
+    gr.update,
+    gr.update,
+    gr.update,
+    gr.update,
+    gr.update,
+    gr.update,
+    gr.update,
+    str,
+    gr.update,
+]:
+    auth_state = auth_state or _default_auth_state()
+    default_result = (
+        gr.update(visible=False),
+        gr.update(value="", interactive=False),
+        gr.update(value="", interactive=False),
+        gr.update(value="", interactive=False),
+        gr.update(value="", interactive=False),
+        gr.update(value="", interactive=False),
+        gr.update(value="", interactive=False),
+        "请先登录后再查看账户信息。",
+        gr.update(interactive=False),
+    )
+
+    if not _is_logged_in(auth_state):
+        return default_result
 
     success, payload = _auth_request(
-        "register/",
-        json_data={"username": username, "password": password},
+        "me/",
+        method="GET",
+        token=auth_state.get("access_token"),
     )
     if not success:
-        return f"注册失败：{payload}"
-    return f"注册成功：{username}，请登录。"
+        return (
+            gr.update(visible=False),
+            *default_result[1:7],
+            f"加载账户信息失败：{payload}",
+            gr.update(interactive=False),
+        )
+
+    def _field(key: str) -> str:
+        return (payload or {}).get(key) or ""
+
+    return (
+        gr.update(visible=True),
+        gr.update(value=_field("account"), interactive=False),
+        gr.update(value=_field("uid"), interactive=False),
+        gr.update(value=_field("nickname"), interactive=False),
+        gr.update(value=_field("email"), interactive=False),
+        gr.update(value=_field("wx_id"), interactive=False),
+        gr.update(value=_field("phone_number"), interactive=False),
+        "",
+        gr.update(interactive=False),
+    )
+
+
+def enable_account_edit_action() -> Tuple[
+    gr.update,
+    gr.update,
+    gr.update,
+    gr.update,
+    gr.update,
+]:
+    editable = gr.update(interactive=True)
+    return (
+        editable,
+        editable,
+        editable,
+        editable,
+        gr.update(interactive=True),
+    )
+
+
+def save_account_profile_action(
+    auth_state: Dict[str, Any] | None,
+    nickname: str,
+    email: str,
+    wx_id: str,
+    phone_number: str,
+) -> Tuple[
+    gr.update,
+    gr.update,
+    gr.update,
+    gr.update,
+    str,
+    gr.update,
+]:
+    auth_state = auth_state or _default_auth_state()
+    if not _is_logged_in(auth_state):
+        return (
+            gr.update(interactive=False),
+            gr.update(interactive=False),
+            gr.update(interactive=False),
+            gr.update(interactive=False),
+            "请先登录后再修改信息。",
+            gr.update(interactive=False),
+        )
+
+    payload = {
+        "nickname": (nickname or "").strip(),
+        "email": (email or "").strip(),
+        "wx_id": (wx_id or "").strip(),
+        "phone_number": (phone_number or "").strip(),
+    }
+    success, resp = _auth_request(
+        "me/",
+        method="PATCH",
+        json_data=payload,
+        token=auth_state.get("access_token"),
+    )
+    if not success:
+        editable = gr.update(interactive=True)
+        return (
+            editable,
+            editable,
+            editable,
+            editable,
+            f"更新失败：{resp}",
+            gr.update(interactive=True),
+        )
+
+    def _field(key: str) -> str:
+        return (resp or {}).get(key) or ""
+
+    return (
+        gr.update(value=_field("nickname"), interactive=False),
+        gr.update(value=_field("email"), interactive=False),
+        gr.update(value=_field("wx_id"), interactive=False),
+        gr.update(value=_field("phone_number"), interactive=False),
+        "信息已更新。",
+        gr.update(interactive=False),
+    )
+
+
+def hide_account_modal_action() -> gr.update:
+    return gr.update(visible=False)
 
 
 def logout_action(auth_state: Dict[str, Any] | None):
@@ -1382,21 +1563,53 @@ with gr.Blocks(css=APP_CSS, analytics_enabled=False) as demo:
     sidebar_state = gr.State(True)
 
     with gr.Column(visible=False, elem_id="auth-modal") as auth_modal:
-        with gr.Group():
-            gr.Markdown("### 账户中心")
+        # 登录弹窗卡片容器，所有控件都放在卡片内，避免按钮漂浮在遮罩层上
+        with gr.Group(elem_id="auth-card"):
+            gr.Markdown("### 登录账户")
             username_input = gr.Textbox(
-                label="用户名", placeholder="请输入用户名", lines=1
+                label="账号", placeholder="请输入账号", lines=1
             )
             password_input = gr.Textbox(
                 label="密码", placeholder="请输入密码", type="password", lines=1
             )
             with gr.Row():
                 login_button = gr.Button("登录", variant="primary")
-                register_button = gr.Button("注册")
-            with gr.Row():
-                logout_modal_button = gr.Button("退出登录", variant="secondary")
-                close_modal_button = gr.Button("关闭")
+                close_modal_button = gr.Button("关闭", variant="secondary")
+            register_link_button = gr.Button("注册账号", elem_id="register-link")
             auth_feedback = gr.Markdown("")
+
+    with gr.Column(visible=False, elem_id="register-modal") as register_modal:
+        # 注册弹窗卡片容器
+        with gr.Group(elem_id="register-card"):
+            gr.Markdown("### 注册新账户")
+            register_account_input = gr.Textbox(label="账号", placeholder="请输入账号")
+            register_nickname_input = gr.Textbox(label="昵称（可选）", placeholder="可留空")
+            register_email_input = gr.Textbox(label="邮箱", placeholder="example@domain.com")
+            register_password_input = gr.Textbox(
+                label="密码", placeholder="请设置密码", type="password"
+            )
+            register_wx_input = gr.Textbox(label="微信号", placeholder="可留空")
+            register_phone_input = gr.Textbox(label="手机号", placeholder="可留空")
+            with gr.Row():
+                register_submit_button = gr.Button("提交注册", variant="primary")
+                register_back_button = gr.Button("返回登录", variant="secondary")
+            register_feedback = gr.Markdown("")
+
+    with gr.Column(visible=False, elem_id="account-modal") as account_modal:
+        # 账户信息弹窗卡片容器
+        with gr.Group(elem_id="account-card"):
+            gr.Markdown("### 账户信息")
+            account_account_display = gr.Textbox(label="账号", interactive=False)
+            account_uid_display = gr.Textbox(label="用户 ID", interactive=False)
+            account_nickname_input = gr.Textbox(label="昵称", interactive=False)
+            account_email_input = gr.Textbox(label="邮箱", interactive=False)
+            account_wx_input = gr.Textbox(label="微信号", interactive=False)
+            account_phone_input = gr.Textbox(label="手机号", interactive=False)
+            with gr.Row():
+                account_edit_button = gr.Button("修改信息", variant="secondary")
+                account_save_button = gr.Button("保存信息", variant="primary", interactive=False)
+                account_close_button = gr.Button("关闭", variant="secondary")
+            account_feedback = gr.Markdown("")
 
     with gr.Row(elem_id="layout", equal_height=True):
         with gr.Column(elem_id="sidebar", scale=0, min_width=260) as sidebar_column:
@@ -1414,6 +1627,7 @@ with gr.Blocks(css=APP_CSS, analytics_enabled=False) as demo:
             gr.Markdown("---")
             user_info_md = gr.Markdown("👤 当前用户：未登录")
             login_open_button = gr.Button("登录", variant="primary")
+            account_button = gr.Button("账户", variant="secondary", visible=False)
             logout_button = gr.Button("退出登录", variant="secondary", visible=False)
 
         with gr.Column(elem_id="main", scale=1) as main_column:
@@ -1471,16 +1685,35 @@ with gr.Blocks(css=APP_CSS, analytics_enabled=False) as demo:
         outputs=[auth_modal],
     )
 
+    register_link_button.click(
+        fn=open_register_modal_action,
+        inputs=None,
+        outputs=[register_modal, auth_modal],
+    )
+
+    register_back_button.click(
+        fn=close_register_modal_action,
+        inputs=None,
+        outputs=[register_modal, auth_modal],
+    )
+
+    register_submit_button.click(
+        fn=register_action_ext,
+        inputs=[
+            register_account_input,
+            register_password_input,
+            register_nickname_input,
+            register_email_input,
+            register_wx_input,
+            register_phone_input,
+        ],
+        outputs=[register_feedback],
+    )
+
     close_modal_button.click(
         fn=hide_modal,
         inputs=None,
         outputs=[auth_modal],
-    )
-
-    register_button.click(
-        fn=register_action,
-        inputs=[username_input, password_input],
-        outputs=[auth_feedback],
     )
 
     login_event = login_button.click(
@@ -1506,7 +1739,7 @@ with gr.Blocks(css=APP_CSS, analytics_enabled=False) as demo:
     login_event.then(
         update_user_panel,
         inputs=[auth_state],
-        outputs=[user_info_md, login_open_button, logout_button],
+        outputs=[user_info_md, login_open_button, account_button, logout_button],
     )
     login_event.then(
         maybe_close_modal,
@@ -1543,36 +1776,9 @@ with gr.Blocks(css=APP_CSS, analytics_enabled=False) as demo:
     logout_event.then(
         update_user_panel,
         inputs=[auth_state],
-        outputs=[user_info_md, login_open_button, logout_button],
+        outputs=[user_info_md, login_open_button, account_button, logout_button],
     )
     logout_event.then(
-        None,
-        inputs=[auth_state],
-        outputs=[auth_state],
-        js=JS_SAVE_AUTH,
-    )
-
-    logout_modal_button.click(
-        fn=logout_action,
-        inputs=[auth_state],
-        outputs=[auth_state, auth_status, auth_feedback],
-    ).then(
-        lambda: gr.update(visible=False),
-        inputs=None,
-        outputs=[auth_modal],
-    ).then(
-        reset_chat_ui,
-        inputs=None,
-        outputs=[chat_state, session_list, chatbot],
-    ).then(
-        update_new_session_button,
-        inputs=[auth_state],
-        outputs=[new_session_button],
-    ).then(
-        update_user_panel,
-        inputs=[auth_state],
-        outputs=[user_info_md, login_open_button, logout_button],
-    ).then(
         None,
         inputs=[auth_state],
         outputs=[auth_state],
@@ -1595,6 +1801,59 @@ with gr.Blocks(css=APP_CSS, analytics_enabled=False) as demo:
         fn=new_session_action,
         inputs=[auth_state, chat_state],
         outputs=[chat_state, session_list, chatbot],
+    )
+
+    account_button.click(
+        fn=open_account_modal_action,
+        inputs=[auth_state],
+        outputs=[
+            account_modal,
+            account_account_display,
+            account_uid_display,
+            account_nickname_input,
+            account_email_input,
+            account_wx_input,
+            account_phone_input,
+            account_feedback,
+            account_save_button,
+        ],
+    )
+
+    account_edit_button.click(
+        fn=enable_account_edit_action,
+        inputs=None,
+        outputs=[
+            account_nickname_input,
+            account_email_input,
+            account_wx_input,
+            account_phone_input,
+            account_save_button,
+        ],
+    )
+
+    account_save_button.click(
+        fn=save_account_profile_action,
+        inputs=[
+            auth_state,
+            account_nickname_input,
+            account_email_input,
+            account_wx_input,
+            account_phone_input,
+        ],
+        outputs=[
+            account_nickname_input,
+            account_email_input,
+            account_wx_input,
+            account_phone_input,
+            account_feedback,
+            account_save_button,
+        ],
+    )
+
+    account_close_button.click(
+        fn=hide_account_modal_action,
+        inputs=None,
+        outputs=[account_modal],
     )
 
     sidebar_toggle_button.click(
@@ -1633,7 +1892,7 @@ with gr.Blocks(css=APP_CSS, analytics_enabled=False) as demo:
     load_event = load_event.then(
         update_user_panel,
         inputs=[auth_state],
-        outputs=[user_info_md, login_open_button, logout_button],
+        outputs=[user_info_md, login_open_button, account_button, logout_button],
     )
     load_event = load_event.then(
         load_sessions,

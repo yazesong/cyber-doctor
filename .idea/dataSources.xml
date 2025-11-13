@@ -15,5 +15,12 @@
       <jdbc-url>jdbc:mysql://114.215.183.142:3306/sys</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
+    <data-source source="LOCAL" name="cyber_doctor@114.215.183.142" uuid="a41c5e39-c626-411f-aee8-0e855a7f24f3">
+      <driver-ref>mysql.8</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>com.mysql.cj.jdbc.Driver</jdbc-driver>
+      <jdbc-url>jdbc:mysql://114.215.183.142:3306/cyber_doctor</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
   </component>
 </project>
