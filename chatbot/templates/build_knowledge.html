@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Build Knowledge</title>
+</head>
+<body>
+    <h1>知识库管理</h1>
+
+    <!-- 文件上传表单 -->
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <label for="knowledge_file">上传知识库文件:</label>
+        <input type="file" name="knowledge_file" id="knowledge_file">
+        <button type="submit" name="action" value="upload">上传文件并构建知识库</button>
+    </form>
+
+    <!-- 展示文件按钮 -->
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit" name="action" value="list_files">展示已上传文件</button>
+    </form>
+
+    <!-- 如果有文件展示，则列出 -->
+    {% if uploaded_files %}
+        <h2>已上传文件：</h2>
+        <ul>
+        {% for file in uploaded_files %}
+            <li>{{ file }}</li>
+        {% endfor %}
+        </ul>
+
+        <!-- 删除文件表单 -->
+        <form method="post">
+            {% csrf_token %}
+            <label for="filename">选择要删除的文件:</label>
+            <select name="filename" id="filename">
+                {% for file in uploaded_files %}
+                    <option value="{{ file }}">{{ file }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" name="action" value="delete_file">删除文件</button>
+        </form>
+    {% endif %}
+
+    <!-- 成功或错误信息 -->
+    {% if success %}
+        <p style="color:green;">{{ success }}</p>
+    {% endif %}
+    {% if error %}
+        <p style="color:red;">{{ error }}</p>
+    {% endif %}
+</body>
+</html>

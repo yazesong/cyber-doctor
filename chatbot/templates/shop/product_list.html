@@ -1,0 +1,190 @@
+{% extends 'shop/base.html' %}
+
+{% block title %}商品列表 - 在线商城{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 搜索栏 */
+    .search-bar {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .search-bar form {
+        display: flex;
+        gap: 10px;
+    }
+    
+    .search-bar input[type="text"] {
+        flex: 1;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+    }
+    
+    /* 分类筛选 */
+    .category-filter {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .category-filter a {
+        display: inline-block;
+        padding: 8px 16px;
+        margin: 5px;
+        background: #f8f9fa;
+        color: #333;
+        text-decoration: none;
+        border-radius: 5px;
+        transition: all 0.3s;
+    }
+    
+    .category-filter a:hover,
+    .category-filter a.active {
+        background: #007bff;
+        color: white;
+    }
+    
+    /* 商品网格 */
+    .product-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 20px;
+    }
+    
+    .product-card {
+        background: white;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        transition: transform 0.3s, box-shadow 0.3s;
+    }
+    
+    .product-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    
+    .product-image {
+        width: 100%;
+        height: 200px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 48px;
+    }
+    
+    .product-info {
+        padding: 15px;
+    }
+    
+    .product-name {
+        font-size: 18px;
+        font-weight: bold;
+        margin-bottom: 10px;
+        color: #333;
+    }
+    
+    .product-description {
+        color: #666;
+        font-size: 14px;
+        margin-bottom: 10px;
+        max-height: 40px;
+        overflow: hidden;
+    }
+    
+    .product-price {
+        font-size: 24px;
+        color: #ff6b6b;
+        font-weight: bold;
+        margin-bottom: 10px;
+    }
+    
+    .product-stock {
+        color: #28a745;
+        font-size: 14px;
+        margin-bottom: 10px;
+    }
+    
+    .product-actions {
+        display: flex;
+        gap: 10px;
+    }
+    
+    .product-actions .btn {
+        flex: 1;
+        text-align: center;
+    }
+    
+    .empty-message {
+        text-align: center;
+        padding: 60px 20px;
+        background: white;
+        border-radius: 8px;
+        color: #666;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<h2>商品列表</h2>
+
+<!-- 搜索栏 -->
+<div class="search-bar">
+    <form method="get" action="{% url 'product_list' %}">
+        <input type="text" name="search" placeholder="搜索商品..." value="{{ search_query }}">
+        <button type="submit" class="btn">搜索</button>
+    </form>
+</div>
+
+<!-- 分类筛选 -->
+<div class="category-filter">
+    <strong>分类：</strong>
+    <a href="{% url 'product_list' %}" {% if not selected_category %}class="active"{% endif %}>全部</a>
+    {% for category in categories %}
+        <a href="?category={{ category.id }}" 
+           {% if selected_category == category.id|stringformat:"s" %}class="active"{% endif %}>
+            {{ category.name }}
+        </a>
+    {% endfor %}
+</div>
+
+<!-- 商品列表 -->
+{% if products %}
+<div class="product-grid">
+    {% for product in products %}
+    <div class="product-card">
+        <div class="product-image">
+            {% if product.image_url %}
+                <img src="{{ product.image_url }}" alt="{{ product.name }}" style="width: 100%; height: 100%; object-fit: cover;">
+            {% else %}
+                🛍️
+            {% endif %}
+        </div>
+        <div class="product-info">
+            <div class="product-name">{{ product.name }}</div>
+            <div class="product-description">{{ product.description|truncatewords:10 }}</div>
+            <div class="product-price">¥{{ product.price }}</div>
+            <div class="product-stock">库存：{{ product.stock }}</div>
+            <div class="product-actions">
+                <a href="{% url 'product_detail' product.id %}" class="btn">查看详情</a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-message">
+    <h3>😔 暂无商品</h3>
+    <p>当前没有符合条件的商品</p>
+</div>
+{% endif %}
+{% endblock %}
+

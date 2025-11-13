@@ -1,0 +1,236 @@
+{% extends 'shop/base.html' %}
+
+{% block title %}购物车 - 在线商城{% endblock %}
+
+{% block extra_css %}
+<style>
+    .cart-container {
+        background: white;
+        padding: 30px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .cart-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 30px;
+    }
+    
+    .cart-table th,
+    .cart-table td {
+        padding: 15px;
+        text-align: left;
+        border-bottom: 1px solid #ddd;
+    }
+    
+    .cart-table th {
+        background: #f8f9fa;
+        font-weight: bold;
+    }
+    
+    .cart-item-image {
+        width: 80px;
+        height: 80px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 5px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+    }
+    
+    .quantity-control {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .quantity-control input {
+        width: 60px;
+        padding: 5px;
+        text-align: center;
+        border: 1px solid #ddd;
+        border-radius: 3px;
+    }
+    
+    .cart-summary {
+        border-top: 2px solid #333;
+        padding-top: 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .cart-total {
+        font-size: 24px;
+        font-weight: bold;
+    }
+    
+    .cart-total .amount {
+        color: #ff6b6b;
+        font-size: 32px;
+    }
+    
+    .empty-cart {
+        text-align: center;
+        padding: 60px 20px;
+        color: #666;
+    }
+    
+    .empty-cart h3 {
+        margin-bottom: 20px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<h2>🛒 我的购物车</h2>
+
+<div class="cart-container">
+    {% if cart_items %}
+    <table class="cart-table">
+        <thead>
+            <tr>
+                <th>商品</th>
+                <th>单价</th>
+                <th>数量</th>
+                <th>小计</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in cart_items %}
+            <tr data-item-id="{{ item.id }}">
+                <td>
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <div class="cart-item-image">🛍️</div>
+                        <div>
+                            <strong>{{ item.product.name }}</strong>
+                            <div style="color: #666; font-size: 14px;">{{ item.product.description|truncatewords:8 }}</div>
+                        </div>
+                    </div>
+                </td>
+                <td>¥{{ item.product.price }}</td>
+                <td>
+                    <div class="quantity-control">
+                        <input type="number" value="{{ item.quantity }}" min="1" max="{{ item.product.stock }}" 
+                               data-item-id="{{ item.id }}" class="quantity-input">
+                        <button class="btn btn-success" onclick="updateQuantity({{ item.id }})">更新</button>
+                    </div>
+                </td>
+                <td class="subtotal">¥{{ item.get_subtotal }}</td>
+                <td>
+                    <button class="btn btn-danger" onclick="removeItem({{ item.id }})">删除</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    
+    <div class="cart-summary">
+        <div class="cart-total">
+            合计：<span class="amount" id="total-price">¥{{ total_price }}</span>
+        </div>
+        <div>
+            <a href="{% url 'product_list' %}" class="btn">继续购物</a>
+            <a href="{% url 'checkout' %}" class="btn btn-success">结算</a>
+        </div>
+    </div>
+    {% else %}
+    <div class="empty-cart">
+        <h3>😔 购物车是空的</h3>
+        <p>还没有添加任何商品</p>
+        <a href="{% url 'product_list' %}" class="btn">去逛逛</a>
+    </div>
+    {% endif %}
+</div>
+
+<div id="message" style="margin-top: 20px;"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 获取CSRF token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+async function updateQuantity(itemId) {
+    const input = document.querySelector(`input[data-item-id="${itemId}"]`);
+    const quantity = parseInt(input.value);
+    const messageDiv = document.getElementById('message');
+    const csrftoken = getCookie('csrftoken');
+    
+    try {
+        const response = await fetch('{% url "update_cart_item" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify({
+                cart_item_id: itemId,
+                quantity: quantity
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            messageDiv.innerHTML = '<div class="alert alert-success">' + data.message + '</div>';
+            location.reload();
+        } else {
+            messageDiv.innerHTML = '<div class="alert alert-error">' + data.message + '</div>';
+        }
+    } catch (error) {
+        messageDiv.innerHTML = '<div class="alert alert-error">操作失败，请重试</div>';
+    }
+}
+
+async function removeItem(itemId) {
+    if (!confirm('确定要删除这个商品吗？')) {
+        return;
+    }
+    
+    const messageDiv = document.getElementById('message');
+    const csrftoken = getCookie('csrftoken');
+    
+    try {
+        const response = await fetch('{% url "remove_from_cart" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify({
+                cart_item_id: itemId
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            messageDiv.innerHTML = '<div class="alert alert-success">' + data.message + '</div>';
+            location.reload();
+        } else {
+            messageDiv.innerHTML = '<div class="alert alert-error">' + data.message + '</div>';
+        }
+    } catch (error) {
+        messageDiv.innerHTML = '<div class="alert alert-error">操作失败，请重试</div>';
+    }
+}
+</script>
+{% endblock %}
+

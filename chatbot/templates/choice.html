@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>选择功能</title>
+</head>
+<body>
+    <h1>请选择一个功能</h1>
+    <form method="POST">
+        {% csrf_token %}
+        <button type="submit" name="dialogue">对话</button>
+        <button type="submit" name="build_knowledge">构建知识库</button>
+    </form>
+</body>
+</html>

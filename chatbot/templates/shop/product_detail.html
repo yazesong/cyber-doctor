@@ -1,0 +1,228 @@
+{% extends 'shop/base.html' %}
+
+{% block title %}{{ product.name }} - 商品详情{% endblock %}
+
+{% block extra_css %}
+<style>
+    .product-detail {
+        background: white;
+        padding: 30px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 40px;
+    }
+    
+    .product-image-large {
+        width: 100%;
+        height: 400px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 80px;
+    }
+    
+    .product-detail-info h2 {
+        font-size: 28px;
+        margin-bottom: 20px;
+        color: #333;
+    }
+    
+    .product-detail-info .category-tag {
+        display: inline-block;
+        padding: 5px 15px;
+        background: #e3f2fd;
+        color: #1976d2;
+        border-radius: 15px;
+        font-size: 14px;
+        margin-bottom: 15px;
+    }
+    
+    .product-detail-info .price {
+        font-size: 36px;
+        color: #ff6b6b;
+        font-weight: bold;
+        margin: 20px 0;
+    }
+    
+    .product-detail-info .stock {
+        font-size: 16px;
+        color: #28a745;
+        margin-bottom: 20px;
+    }
+    
+    .product-detail-info .description {
+        color: #666;
+        line-height: 1.8;
+        margin-bottom: 30px;
+        padding: 20px;
+        background: #f8f9fa;
+        border-radius: 5px;
+    }
+    
+    .quantity-selector {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .quantity-selector label {
+        font-weight: bold;
+    }
+    
+    .quantity-selector input {
+        width: 100px;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        text-align: center;
+        font-size: 16px;
+    }
+    
+    .action-buttons {
+        display: flex;
+        gap: 15px;
+    }
+    
+    .action-buttons .btn {
+        flex: 1;
+        padding: 15px;
+        font-size: 16px;
+        text-align: center;
+    }
+    
+    .back-link {
+        display: inline-block;
+        margin-bottom: 20px;
+        color: #007bff;
+        text-decoration: none;
+    }
+    
+    .back-link:hover {
+        text-decoration: underline;
+    }
+    
+    @media (max-width: 768px) {
+        .product-detail {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<a href="{% url 'product_list' %}" class="back-link">← 返回商品列表</a>
+
+<div class="product-detail">
+    <div class="product-image-large">
+        {% if product.image_url %}
+            <img src="{{ product.image_url }}" alt="{{ product.name }}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px;">
+        {% else %}
+            🛍️
+        {% endif %}
+    </div>
+    
+    <div class="product-detail-info">
+        {% if product.category %}
+        <span class="category-tag">{{ product.category.name }}</span>
+        {% endif %}
+        
+        <h2>{{ product.name }}</h2>
+        
+        <div class="price">¥{{ product.price }}</div>
+        
+        <div class="stock">
+            {% if product.stock > 0 %}
+                ✅ 库存充足 (剩余 {{ product.stock }} 件)
+            {% else %}
+                ❌ 暂时缺货
+            {% endif %}
+        </div>
+        
+        <div class="description">
+            <strong>商品描述：</strong><br>
+            {{ product.description|linebreaks }}
+        </div>
+        
+        {% if product.stock > 0 %}
+        <form id="add-to-cart-form">
+            <div class="quantity-selector">
+                <label>数量：</label>
+                <input type="number" name="quantity" id="quantity" value="1" min="1" max="{{ product.stock }}">
+            </div>
+            
+            <div class="action-buttons">
+                <button type="submit" class="btn btn-success">🛒 加入购物车</button>
+                <a href="{% url 'cart_view' %}" class="btn">查看购物车</a>
+            </div>
+        </form>
+        {% else %}
+        <div class="alert alert-error">
+            商品已售罄，敬请期待
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div id="message" style="margin-top: 20px;"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 获取CSRF token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+document.getElementById('add-to-cart-form')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const quantity = document.getElementById('quantity').value;
+    const messageDiv = document.getElementById('message');
+    const csrftoken = getCookie('csrftoken');
+    
+    try {
+        const response = await fetch('{% url "add_to_cart" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify({
+                product_id: {{ product.id }},
+                quantity: parseInt(quantity)
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            messageDiv.innerHTML = '<div class="alert alert-success">' + data.message + '</div>';
+            setTimeout(() => {
+                window.location.href = '{% url "cart_view" %}';
+            }, 1000);
+        } else {
+            messageDiv.innerHTML = '<div class="alert alert-error">' + data.message + '</div>';
+        }
+    } catch (error) {
+        messageDiv.innerHTML = '<div class="alert alert-error">操作失败，请重试</div>';
+    }
+});
+</script>
+{% endblock %}
+
