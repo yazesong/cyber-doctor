@@ -46,4 +46,4 @@ Thumbs.db
 .env.local
 .env.*.local
 
-config/config-web.yaml
+config/config-web.yamlmodelscope_models/
