@@ -165,7 +165,21 @@ def logout_view(request: HttpRequest) -> JsonResponse:
     return HttpResponse(status=HTTPStatus.NO_CONTENT.value)
 
 
-@require_http_methods(["GET"])
+def _serialize_user(user: User) -> Dict[str, Any]:
+    return {
+        "uid": user.uid,
+        "account": user.account,
+        "nickname": user.nickname,
+        "email": user.email,
+        "wx_id": user.wx_id,
+        "phone_number": user.phone_number,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "last_login": user.last_login.isoformat() if user.last_login else None,
+    }
+
+
+@csrf_exempt
+@require_http_methods(["GET", "PATCH"])
 def me_view(request: HttpRequest) -> JsonResponse:
     token = _get_bearer_token(request)
     if not token:
@@ -177,4 +191,33 @@ def me_view(request: HttpRequest) -> JsonResponse:
     except (TokenError, User.DoesNotExist):
         return _error("Invalid or expired token", HTTPStatus.UNAUTHORIZED)
 
-    return _json_response({"uid": user.uid, "account": user.account})
+    if request.method == "GET":
+        return _json_response(_serialize_user(user))
+
+    try:
+        data = _parse_json(request)
+    except ValueError as exc:
+        return _error(str(exc), HTTPStatus.BAD_REQUEST)
+
+    allowed_fields = {
+        "nickname": 20,
+        "email": 30,
+        "wx_id": 30,
+        "phone_number": 20,
+    }
+
+    updated = False
+    for field, max_len in allowed_fields.items():
+        if field not in data:
+            continue
+        value = (data.get(field) or "").strip()
+        if len(value) > max_len:
+            return _error(f"{field} length must be <= {max_len}", HTTPStatus.BAD_REQUEST)
+        setattr(user, field, value)
+        updated = True
+
+    if not updated:
+        return _error("No valid fields provided", HTTPStatus.BAD_REQUEST)
+
+    user.save(update_fields=list(allowed_fields.keys()))
+    return _json_response(_serialize_user(user))
