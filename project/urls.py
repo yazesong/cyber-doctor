@@ -21,6 +21,7 @@ from project.settings2 import BASE_DIR
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    # 默认跳转到商城首页
     path('', RedirectView.as_view(url='chatbot/')),
     path('chatbot/', include('chatbot.urls')),
 ]

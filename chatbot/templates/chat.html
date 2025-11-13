@@ -19,9 +19,26 @@
             height: 100%;
             border: none;
         }
+        .shop-btn {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            z-index: 1000;
+            padding: 10px 16px;
+            background-color: #1677ff;
+            color: #fff;
+            border-radius: 8px;
+            text-decoration: none;
+            font-family: Arial, sans-serif;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+        }
+        .shop-btn:hover {
+            background-color: #125bcc;
+        }
     </style>
 </head>
 <body>
+    <a class="shop-btn" href="{% url 'product_list' %}" target="_blank" rel="noopener">进入商店</a>
     <iframe src="http://127.0.0.1:7860/"></iframe>
 </body>
 </html>

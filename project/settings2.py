@@ -4,11 +4,20 @@ Django settings for project project.
 
 from pathlib import Path
 import os
+from dotenv import load_dotenv
+
+
+def _split_csv(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
 
 # -------------------------------------------------------------------
 # 基础路径
 # -------------------------------------------------------------------
 BASE_DIR = Path(__file__).resolve().parent.parent
+# 加载根目录 .env，确保数据库等环境变量在 manage.py 运行时可见
+load_dotenv(BASE_DIR / ".env", override=False)
 
 # -------------------------------------------------------------------
 # 安全 & 调试
@@ -51,6 +60,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "chatbot.middleware.JWTAuthMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -79,29 +89,20 @@ TEMPLATES = [
 WSGI_APPLICATION = "project.wsgi.application"
 
 # -------------------------------------------------------------------
-# 数据库：本地默认 SQLite；如需连远端 MySQL，设置环境变量 DJANGO_USE_SQLITE=0
+# 数据库：固定使用 MySQL（移除 SQLite 分支）
 # -------------------------------------------------------------------
-USE_SQLITE = os.getenv("DJANGO_USE_SQLITE", "1") == "1"
-
-if USE_SQLITE:
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
-        }
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.mysql",
+        "NAME": os.getenv("DJANGO_DB_NAME", "cyber_doctor"),
+        "USER": os.getenv("DJANGO_DB_USER", "root"),
+        "PASSWORD": os.getenv("DJANGO_DB_PASSWORD", ""),
+        "HOST": os.getenv("DJANGO_DB_HOST", "127.0.0.1"),
+        "PORT": os.getenv("DJANGO_DB_PORT", "3306"),
+        "OPTIONS": {"charset": os.getenv("DJANGO_DB_CHARSET", "utf8mb4")},
+        "CONN_MAX_AGE": int(os.getenv("DJANGO_DB_CONN_MAX_AGE", "60")),
     }
-else:
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.mysql",
-            "NAME": os.getenv("DJANGO_DB_NAME", "cyber_doctor"),
-            "USER": os.getenv("DJANGO_DB_USER", "root"),
-            "PASSWORD": os.getenv("DJANGO_DB_PASSWORD", "123456"),
-            "HOST": os.getenv("DJANGO_DB_HOST", "114.215.183.142"),
-            "PORT": os.getenv("DJANGO_DB_PORT", "3306"),
-            "OPTIONS": {"charset": "utf8mb4"},
-        }
-    }
+}
 
 # -------------------------------------------------------------------
 # 密码校验
@@ -137,8 +138,19 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # -------------------------------------------------------------------
 # CORS（开发期全放开，生产请按域名精确配置）
 # -------------------------------------------------------------------
+CSRF_TRUSTED_ORIGINS = _split_csv(os.getenv("CSRF_TRUSTED_ORIGINS")) or [
+    "http://127.0.0.1:8000",
+    "http://127.0.0.1:8001",
+]
+
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_ALL_ORIGINS = True
+_allowed_origins = _split_csv(os.getenv("CORS_ALLOWED_ORIGINS"))
+if _allowed_origins:
+    CORS_ALLOW_ALL_ORIGINS = False
+    CORS_ALLOWED_ORIGINS = _allowed_origins
+else:
+    CORS_ALLOW_ALL_ORIGINS = True
+    CORS_ALLOWED_ORIGINS = []
 CORS_ALLOW_HEADERS = ["*"]
 
 # -------------------------------------------------------------------
@@ -163,3 +175,21 @@ CACHES = {
         "LOCATION": "local-cache",
     }
 }
+
+# -------------------------------------------------------------------
+# Session/Cookie 设置，保证与 AuthServer 同步
+# -------------------------------------------------------------------
+SESSION_ENGINE = "django.contrib.sessions.backends.db"
+SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "sessionid")
+SESSION_COOKIE_DOMAIN = os.getenv("SESSION_COOKIE_DOMAIN") or None
+SESSION_COOKIE_SAMESITE = os.getenv("SESSION_COOKIE_SAMESITE", "Lax")
+
+AUTH_SERVER_BASE_URL = os.getenv("AUTH_SERVER_BASE_URL", "http://127.0.0.1:8000")
+
+# -------------------------------------------------------------------
+# JWT （与 AuthServer 共用配置）
+# -------------------------------------------------------------------
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "replace-me-with-a-secure-jwt-secret")
+JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+ACCESS_TOKEN_LIFETIME_MINUTES = int(os.getenv("ACCESS_TOKEN_LIFETIME_MINUTES", "60"))
+REFRESH_TOKEN_LIFETIME_DAYS = int(os.getenv("REFRESH_TOKEN_LIFETIME_DAYS", "7"))

@@ -27,21 +27,21 @@ class ProductAdmin(admin.ModelAdmin):
 @admin.register(Cart)
 class CartAdmin(admin.ModelAdmin):
     list_display = ['id', 'user', 'created_at']
-    search_fields = ['user__username']
+    search_fields = ['user__account']
     list_filter = ['created_at']
 
 # 购物车项目管理
 @admin.register(CartItem)
 class CartItemAdmin(admin.ModelAdmin):
     list_display = ['id', 'cart', 'product', 'quantity', 'added_at']
-    search_fields = ['product__name', 'cart__user__username']
+    search_fields = ['product__name', 'cart__user__account']
     list_filter = ['added_at']
 
 # 订单管理
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
     list_display = ['id', 'order_number', 'user', 'status', 'total_amount', 'created_at']
-    search_fields = ['order_number', 'user__username']
+    search_fields = ['order_number', 'user__account']
     list_filter = ['status', 'created_at']
     list_editable = ['status']
     ordering = ['-created_at']

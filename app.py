@@ -1,4 +1,5 @@
 import base64
+import json
 import os
 import re
 import socket
@@ -58,6 +59,17 @@ function() {{
         localStorage.removeItem('{AUTH_STORAGE_KEY}');
         return null;
     }}
+}}
+"""
+
+JS_SAVE_AUTH_TEXT = f"""
+function(value) {{
+    if (value && value !== "null" && value !== "") {{
+        localStorage.setItem('{AUTH_STORAGE_KEY}', value);
+    }} else {{
+        localStorage.removeItem('{AUTH_STORAGE_KEY}');
+    }}
+    return value;
 }}
 """
 
@@ -206,6 +218,11 @@ def _chat_base_url() -> str:
     return f"{_auth_base_url()}/chat"
 
 
+def _shop_base_url() -> str:
+    base = os.getenv("SHOP_BASE_URL") or "http://127.0.0.1:8001"
+    return f"{base.rstrip('/')}/chatbot/"
+
+
 def _default_auth_state() -> Dict[str, Any]:
     return {
         "user": None,
@@ -292,6 +309,17 @@ def _chat_request(
     token: str | None = None,
 ) -> Tuple[bool, Any]:
     url = f"{_chat_base_url()}/{path.lstrip('/')}"
+    return _http_request(url, method=method, json_data=json_data, token=token)
+
+
+def _shop_request(
+    path: str,
+    *,
+    method: str = "GET",
+    json_data: Dict[str, Any] | None = None,
+    token: str | None = None,
+) -> Tuple[bool, Any]:
+    url = f"{_shop_base_url()}/{path.lstrip('/')}"
     return _http_request(url, method=method, json_data=json_data, token=token)
 
 
@@ -392,6 +420,87 @@ def _prepare_user_context(auth_state: Dict[str, Any] | None) -> Dict[str, Any]:
     user_id = _resolve_user_id(auth_state)
     RAG_INSTANCE.set_user_id(user_id)
     return auth_state
+
+
+def _serialize_auth_state(auth_state: Dict[str, Any] | None) -> str:
+    return json.dumps(auth_state or _default_auth_state())
+
+
+def _format_currency(value: Any) -> str:
+    try:
+        return f"¥{float(value):.2f}"
+    except (TypeError, ValueError):
+        return "¥0.00"
+
+
+def load_cart_panel(auth_state: Dict[str, Any] | None):
+    auth_state = auth_state or _default_auth_state()
+    if not _is_logged_in(auth_state):
+        return "请先登录后查看购物车。", [], "合计：¥0.00"
+
+    success, payload = _shop_request(
+        "shop/api/cart/",
+        method="GET",
+        token=auth_state.get("access_token"),
+    )
+    if not success:
+        return f"加载购物车失败：{payload}", [], "合计：¥0.00"
+
+    rows = []
+    for item in payload.get("items", []):
+        rows.append(
+            [
+                item.get("name") or "-",
+                item.get("quantity") or 0,
+                _format_currency(item.get("price")),
+                _format_currency(item.get("subtotal")),
+                item.get("added_at") or "",
+            ]
+        )
+
+    total = _format_currency(payload.get("total", 0))
+    return "", rows, f"合计：{total}"
+
+
+def load_orders_panel(auth_state: Dict[str, Any] | None):
+    auth_state = auth_state or _default_auth_state()
+    if not _is_logged_in(auth_state):
+        return "请先登录后查看订单。", []
+
+    success, payload = _shop_request(
+        "shop/api/orders/",
+        method="GET",
+        token=auth_state.get("access_token"),
+    )
+    if not success:
+        return f"加载订单失败：{payload}", []
+
+    rows = []
+    for order in payload.get("orders", []):
+        rows.append(
+            [
+                order.get("order_number"),
+                order.get("status_display") or order.get("status"),
+                _format_currency(order.get("total_amount")),
+                order.get("created_at") or "",
+                len(order.get("items") or []),
+            ]
+        )
+    return "", rows
+
+
+def refresh_shop_panels(auth_state: Dict[str, Any] | None):
+    cart_msg, cart_rows, cart_total = load_cart_panel(auth_state)
+    orders_msg, orders_rows = load_orders_panel(auth_state)
+    return cart_msg, cart_rows, cart_total, orders_msg, orders_rows
+
+
+def reset_cart_panel():
+    return "请先登录后查看购物车。", [], "合计：¥0.00"
+
+
+def reset_orders_panel():
+    return "请先登录后查看订单。", []
 
 
 def _default_chat_state() -> Dict[str, Any]:
@@ -1559,6 +1668,7 @@ examples = [
 # 构建 Gradio 界面
 with gr.Blocks(css=APP_CSS, analytics_enabled=False) as demo:
     auth_state = gr.State(_default_auth_state())
+    auth_state_json = gr.Textbox(value="", visible=False)
     chat_state = gr.State(_default_chat_state())
     sidebar_state = gr.State(True)
 
@@ -1636,6 +1746,7 @@ with gr.Blocks(css=APP_CSS, analytics_enabled=False) as demo:
                     "◀", elem_id="sidebar-toggle", variant="secondary"
                 )
                 auth_status = gr.Markdown(_auth_status_message(_default_auth_state()))
+                shop_button = gr.Button("进入商店", variant="primary")
             chatbot = gr.Chatbot(
                 height=600,
                 avatar_images=AVATAR,
@@ -1678,7 +1789,49 @@ with gr.Blocks(css=APP_CSS, analytics_enabled=False) as demo:
                     examples_per_page=15,
                 )
 
+            with gr.Accordion("商城（当前登录）", open=False):
+                cart_refresh_button = gr.Button("刷新购物车", variant="secondary")
+                cart_message = gr.Markdown("请先登录后查看购物车。")
+                cart_table = gr.Dataframe(
+                    headers=["商品", "数量", "单价", "小计", "添加时间"],
+                    datatype=["str", "number", "str", "str", "str"],
+                    value=[],
+                    interactive=False,
+                )
+                cart_summary = gr.Markdown("合计：¥0.00")
+
+                orders_refresh_button = gr.Button("刷新订单", variant="secondary")
+                orders_message = gr.Markdown("请先登录后查看订单。")
+                orders_table = gr.Dataframe(
+                    headers=["订单号", "状态", "金额", "创建时间", "商品数"],
+                    datatype=["str", "str", "str", "str", "number"],
+                    value=[],
+                    interactive=False,
+                )
+
     # === 事件绑定 ===
+    # 进入商店（SSO：自动登录；无 token 时仅打开商城并提示）
+    shop_button.click(
+        fn=None,
+        inputs=[auth_state],
+        outputs=None,
+        js=(
+            "(state) => {\n"
+            f"  const raw = localStorage.getItem('{AUTH_STORAGE_KEY}');\n"
+            "  let finalToken = (state && state.access_token) ? state.access_token : null;\n"
+            "  if (!finalToken && raw) {\n"
+            "    try { finalToken = (JSON.parse(raw) || {}).access_token || null; } catch (e) {}\n"
+            "  }\n"
+            f"  const base = '{_shop_base_url().rstrip('/')}/';\n"
+            "  if (finalToken) {\n"
+            "    window.open(base + 'shop/sso/?token=' + encodeURIComponent(finalToken), '_blank');\n"
+            "  } else {\n"
+            "    alert('请先在聊天界面登录，再进入商店。');\n"
+            "    window.open(base, '_blank');\n"
+            "  }\n"
+            "}"
+        ),
+    )
     login_open_button.click(
         fn=show_modal,
         inputs=None,
@@ -1746,11 +1899,26 @@ with gr.Blocks(css=APP_CSS, analytics_enabled=False) as demo:
         inputs=[auth_state],
         outputs=[auth_modal],
     )
+    login_event = login_event.then(
+        _serialize_auth_state,
+        inputs=[auth_state],
+        outputs=[auth_state_json],
+    )
     login_event.then(
         None,
+        inputs=[auth_state_json],
+        outputs=[auth_state_json],
+        js=JS_SAVE_AUTH_TEXT,
+    )
+    login_event.then(
+        load_cart_panel,
         inputs=[auth_state],
-        outputs=[auth_state],
-        js=JS_SAVE_AUTH,
+        outputs=[cart_message, cart_table, cart_summary],
+    )
+    login_event.then(
+        load_orders_panel,
+        inputs=[auth_state],
+        outputs=[orders_message, orders_table],
     )
 
     logout_event = logout_button.click(
@@ -1778,11 +1946,26 @@ with gr.Blocks(css=APP_CSS, analytics_enabled=False) as demo:
         inputs=[auth_state],
         outputs=[user_info_md, login_open_button, account_button, logout_button],
     )
+    logout_event = logout_event.then(
+        lambda: _serialize_auth_state(_default_auth_state()),
+        inputs=None,
+        outputs=[auth_state_json],
+    )
     logout_event.then(
         None,
-        inputs=[auth_state],
-        outputs=[auth_state],
-        js=JS_SAVE_AUTH,
+        inputs=[auth_state_json],
+        outputs=[auth_state_json],
+        js=JS_SAVE_AUTH_TEXT,
+    )
+    logout_event.then(
+        reset_cart_panel,
+        inputs=None,
+        outputs=[cart_message, cart_table, cart_summary],
+    )
+    logout_event.then(
+        reset_orders_panel,
+        inputs=None,
+        outputs=[orders_message, orders_table],
     )
 
     chat_input.submit(
@@ -1801,6 +1984,18 @@ with gr.Blocks(css=APP_CSS, analytics_enabled=False) as demo:
         fn=new_session_action,
         inputs=[auth_state, chat_state],
         outputs=[chat_state, session_list, chatbot],
+    )
+
+    cart_refresh_button.click(
+        fn=load_cart_panel,
+        inputs=[auth_state],
+        outputs=[cart_message, cart_table, cart_summary],
+    )
+
+    orders_refresh_button.click(
+        fn=load_orders_panel,
+        inputs=[auth_state],
+        outputs=[orders_message, orders_table],
     )
 
     account_button.click(
@@ -1899,10 +2094,31 @@ with gr.Blocks(css=APP_CSS, analytics_enabled=False) as demo:
         inputs=[auth_state, chat_state],
         outputs=[chat_state, session_list],
     )
-    load_event.then(
+    load_event = load_event.then(
         load_messages,
         inputs=[auth_state, chat_state],
         outputs=[chat_state, chatbot],
+    )
+    load_event = load_event.then(
+        _serialize_auth_state,
+        inputs=[auth_state],
+        outputs=[auth_state_json],
+    )
+    load_event.then(
+        None,
+        inputs=[auth_state_json],
+        outputs=[auth_state_json],
+        js=JS_SAVE_AUTH_TEXT,
+    )
+    load_event = load_event.then(
+        load_cart_panel,
+        inputs=[auth_state],
+        outputs=[cart_message, cart_table, cart_summary],
+    )
+    load_event.then(
+        load_orders_panel,
+        inputs=[auth_state],
+        outputs=[orders_message, orders_table],
     )
 
     toggle_voice_button.click(

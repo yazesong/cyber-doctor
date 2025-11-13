@@ -121,8 +121,8 @@
             <a href="{% url 'product_list' %}">商品列表</a>
             <a href="{% url 'cart_view' %}">购物车</a>
             <a href="{% url 'order_list' %}">我的订单</a>
-            {% if request.session.username %}
-                <span style="color: #fff;">欢迎, {{ request.session.username }}</span>
+            {% if request.jwt_user %}
+                <span style="color: #fff;">欢迎, {{ request.jwt_user.nickname|default:request.jwt_user.account }}</span>
                 <a href="{% url 'shop_logout' %}">退出</a>
             {% else %}
                 <a href="{% url 'shop_login' %}">登录</a>

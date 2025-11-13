@@ -114,6 +114,14 @@ STATIC_ROOT = os.environ.get("DJANGO_STATIC_ROOT", str(BASE_DIR / "static"))
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# Session / Cookie / CSRF 配置
+SESSION_ENGINE = "django.contrib.sessions.backends.db"
+SESSION_COOKIE_NAME = os.environ.get("SESSION_COOKIE_NAME", "sessionid")
+SESSION_COOKIE_DOMAIN = os.environ.get("SESSION_COOKIE_DOMAIN") or None
+SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "Lax")
+
+CSRF_TRUSTED_ORIGINS = _split_csv(os.environ.get("CSRF_TRUSTED_ORIGINS"))
+
 # === JWT / Redis settings ===
 JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "replace-me-with-a-secure-jwt-secret")
 JWT_ALGORITHM = os.environ.get("JWT_ALGORITHM", "HS256")

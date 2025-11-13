@@ -1,9 +1,36 @@
 from django.db import models
 from django.utils import timezone
 
+
+class AccountUser(models.Model):
+    """只读映射 authserver.users.models.User（user 表）"""
+
+    uid = models.CharField(max_length=10, primary_key=True)
+    account = models.CharField(max_length=20, unique=True)
+    nickname = models.CharField(max_length=20, blank=True)
+    email = models.CharField(max_length=30, blank=True)
+    password = models.CharField(max_length=128)
+    wx_id = models.CharField(max_length=30, blank=True)
+    phone_number = models.CharField(max_length=20, blank=True)
+    created_at = models.DateTimeField()
+    last_login = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "user"
+        managed = False
+
+    def __str__(self) -> str:  # pragma: no cover - admin display
+        return self.account
+
+    @property
+    def username(self) -> str:
+        """兼容旧代码，使用 account 作为 username."""
+        return self.account
+
+
 class UserInfo(models.Model):
-    username=models.CharField(verbose_name="用户名",max_length=32)
-    password=models.CharField(verbose_name="密码",max_length=64)
+    username = models.CharField(verbose_name="用户名", max_length=32)
+    password = models.CharField(verbose_name="密码", max_length=64)
 
 # 商品分类模型
 class Category(models.Model):
@@ -40,7 +67,14 @@ class Product(models.Model):
 
 # 购物车模型
 class Cart(models.Model):
-    user = models.ForeignKey(UserInfo, on_delete=models.CASCADE, verbose_name="用户", related_name="cart")
+    user = models.ForeignKey(
+        AccountUser,
+        on_delete=models.CASCADE,
+        verbose_name="用户",
+        related_name="cart",
+        db_column="user_uid",
+        to_field="uid",
+    )
     created_at = models.DateTimeField(verbose_name="创建时间", auto_now_add=True)
     updated_at = models.DateTimeField(verbose_name="更新时间", auto_now=True)
     
@@ -82,7 +116,14 @@ class Order(models.Model):
         ('cancelled', '已取消'),
     ]
     
-    user = models.ForeignKey(UserInfo, on_delete=models.CASCADE, verbose_name="用户", related_name="orders")
+    user = models.ForeignKey(
+        AccountUser,
+        on_delete=models.CASCADE,
+        verbose_name="用户",
+        related_name="orders",
+        db_column="user_uid",
+        to_field="uid",
+    )
     order_number = models.CharField(verbose_name="订单号", max_length=50, unique=True)
     status = models.CharField(verbose_name="订单状态", max_length=20, choices=STATUS_CHOICES, default='pending')
     total_amount = models.DecimalField(verbose_name="订单总额", max_digits=10, decimal_places=2)

@@ -4,6 +4,7 @@ import json
 from http import HTTPStatus
 from typing import Any, Dict, Optional, Tuple
 
+from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -17,6 +18,33 @@ from core.jwt_service import (
     revoke_tokens,
 )
 from users.models import User
+
+
+def _cookie_domain() -> Optional[str]:
+    return getattr(settings, "SESSION_COOKIE_DOMAIN", None) or None
+
+
+def _cookie_kwargs(max_age: int) -> Dict[str, Any]:
+    return {
+        "max_age": max_age,
+        "httponly": True,
+        "secure": not settings.DEBUG,
+        "samesite": getattr(settings, "SESSION_COOKIE_SAMESITE", "Lax"),
+        "domain": _cookie_domain(),
+        "path": "/",
+    }
+
+
+def _set_auth_cookies(response: JsonResponse | HttpResponse, pair) -> JsonResponse | HttpResponse:
+    response.set_cookie("access_token", pair.access_token, **_cookie_kwargs(pair.access_expires_in))
+    response.set_cookie("refresh_token", pair.refresh_token, **_cookie_kwargs(pair.refresh_expires_in))
+    return response
+
+
+def _clear_auth_cookies(response: HttpResponse) -> HttpResponse:
+    response.delete_cookie("access_token", path="/", domain=_cookie_domain())
+    response.delete_cookie("refresh_token", path="/", domain=_cookie_domain())
+    return response
 
 
 def _json_response(
@@ -57,6 +85,12 @@ def _get_bearer_token(request: HttpRequest) -> Optional[str]:
     if auth_header.startswith(prefix):
         return auth_header[len(prefix) :].strip()
     return None
+
+
+def _get_refresh_token(payload: Optional[Dict[str, Any]], request: HttpRequest) -> Optional[str]:
+    if payload and payload.get("refresh_token"):
+        return payload["refresh_token"]
+    return request.COOKIES.get("refresh_token")
 
 
 @csrf_exempt
@@ -112,7 +146,7 @@ def login_view(request: HttpRequest) -> JsonResponse:
     user.save(update_fields=["last_login"])
 
     pair = generate_token_pair(user)
-    return _json_response(
+    response = _json_response(
         {
             "user": {"uid": user.uid, "account": user.account},
             "access_token": pair.access_token,
@@ -121,6 +155,7 @@ def login_view(request: HttpRequest) -> JsonResponse:
             "refresh_expires_in": pair.refresh_expires_in,
         }
     )
+    return _set_auth_cookies(response, pair)
 
 
 @csrf_exempt
@@ -131,7 +166,7 @@ def refresh_view(request: HttpRequest) -> JsonResponse:
     except ValueError as exc:
         return _error(str(exc), HTTPStatus.BAD_REQUEST)
 
-    refresh_token = payload.get("refresh_token")
+    refresh_token = _get_refresh_token(payload, request)
     if not refresh_token:
         return _error("refresh_token is required", HTTPStatus.BAD_REQUEST)
 
@@ -140,7 +175,7 @@ def refresh_view(request: HttpRequest) -> JsonResponse:
     except TokenError as exc:
         return _error(str(exc), HTTPStatus.UNAUTHORIZED)
 
-    return _json_response(
+    response = _json_response(
         {
             "user": {"uid": user.uid, "account": user.account},
             "access_token": pair.access_token,
@@ -149,20 +184,23 @@ def refresh_view(request: HttpRequest) -> JsonResponse:
             "refresh_expires_in": pair.refresh_expires_in,
         }
     )
+    return _set_auth_cookies(response, pair)
 
 
 @csrf_exempt
 @require_http_methods(["POST"])
 def logout_view(request: HttpRequest) -> JsonResponse:
-    access_token = _get_bearer_token(request)
+    access_token = _get_bearer_token(request) or request.COOKIES.get("access_token")
     try:
         payload = _parse_json(request)
     except ValueError:
         payload = {}
-    refresh_token = payload.get("refresh_token")
+    refresh_token = _get_refresh_token(payload, request)
 
     revoke_tokens(access_token, refresh_token)
-    return HttpResponse(status=HTTPStatus.NO_CONTENT.value)
+    response = HttpResponse(status=HTTPStatus.NO_CONTENT.value)
+    _clear_auth_cookies(response)
+    return response
 
 
 def _serialize_user(user: User) -> Dict[str, Any]:

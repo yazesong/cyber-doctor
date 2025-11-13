@@ -11,6 +11,9 @@ urlpatterns=[
     path('files/<str:filename>/', knowledge.delete_file, name='delete_file'),
     path('view_file/<str:filename>/', knowledge.view_uploaded_file_view, name='view_uploaded_file'),
     
+    # 聊天页面（内嵌 Gradio）
+    path('chat/', chat.grodio_chat_view, name='chat_view'),
+
     # 购物系统路由
     path('', shop.product_list, name='product_list'),
     path('shop/login/', shop.shop_login, name='shop_login'),
@@ -22,9 +25,12 @@ urlpatterns=[
     path('shop/cart/add/', shop.add_to_cart, name='add_to_cart'),
     path('shop/cart/update/', shop.update_cart_item, name='update_cart_item'),
     path('shop/cart/remove/', shop.remove_from_cart, name='remove_from_cart'),
+    path('shop/api/cart/', shop.cart_data, name='cart_data'),
     path('shop/checkout/', shop.checkout, name='checkout'),
     path('shop/order/create/', shop.create_order, name='create_order'),
     path('shop/order/pay/', shop.pay_order, name='pay_order'),
+    path('shop/api/orders/', shop.orders_data, name='orders_data'),
     path('shop/orders/', shop.order_list, name='order_list'),
     path('shop/orders/<int:order_id>/', shop.order_detail, name='order_detail'),
+    path('shop/sso/', shop.shop_sso, name='shop_sso'),
 ]
