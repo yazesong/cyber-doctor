@@ -22,7 +22,8 @@ from pydub import AudioSegment
 from audio.audio_generate import audio_generate
 from client.clientfactory import Clientfactory
 from env import get_env_value
-from model.RAG.retrieve_model import INSTANCE as RAG_INSTANCE
+from model.RAG.retrieve_model import Retrievemodel
+RAG_INSTANCE = Retrievemodel()
 from qa.answer import get_answer
 from qa.function_tool import process_image_describe_tool
 from qa.purpose_type import userPurposeType

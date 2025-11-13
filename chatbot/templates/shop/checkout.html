@@ -1,0 +1,180 @@
+{% extends 'shop/base.html' %}
+
+{% block title %}订单结算 - 在线商城{% endblock %}
+
+{% block extra_css %}
+<style>
+    .checkout-container {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 30px;
+    }
+    
+    .checkout-form,
+    .order-summary {
+        background: white;
+        padding: 30px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .form-group {
+        margin-bottom: 20px;
+    }
+    
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: bold;
+    }
+    
+    .form-group input,
+    .form-group textarea {
+        width: 100%;
+        padding: 12px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        font-size: 16px;
+    }
+    
+    .form-group textarea {
+        min-height: 100px;
+        resize: vertical;
+    }
+    
+    .order-summary h3 {
+        margin-bottom: 20px;
+        padding-bottom: 15px;
+        border-bottom: 2px solid #f0f0f0;
+    }
+    
+    .summary-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 10px 0;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    
+    .summary-total {
+        display: flex;
+        justify-content: space-between;
+        padding: 20px 0;
+        font-size: 24px;
+        font-weight: bold;
+        border-top: 2px solid #333;
+        margin-top: 15px;
+    }
+    
+    .summary-total .amount {
+        color: #ff6b6b;
+    }
+    
+    @media (max-width: 768px) {
+        .checkout-container {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<h2>📝 订单结算</h2>
+
+<div class="checkout-container">
+    <div class="checkout-form">
+        <h3>收货信息</h3>
+        <form id="checkout-form">
+            <div class="form-group">
+                <label>收货地址 *</label>
+                <textarea name="shipping_address" required placeholder="请输入详细的收货地址"></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label>联系电话 *</label>
+                <input type="tel" name="contact_phone" required placeholder="请输入联系电话">
+            </div>
+            
+            <button type="submit" class="btn btn-success" style="width: 100%; padding: 15px; font-size: 18px;">
+                确认下单
+            </button>
+        </form>
+    </div>
+    
+    <div class="order-summary">
+        <h3>订单摘要</h3>
+        
+        {% for item in cart_items %}
+        <div class="summary-item">
+            <div>
+                <strong>{{ item.product.name }}</strong>
+                <div style="color: #666; font-size: 14px;">x {{ item.quantity }}</div>
+            </div>
+            <div>¥{{ item.get_subtotal }}</div>
+        </div>
+        {% endfor %}
+        
+        <div class="summary-total">
+            <span>总计：</span>
+            <span class="amount">¥{{ total_price }}</span>
+        </div>
+    </div>
+</div>
+
+<div id="message" style="margin-top: 20px;"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 获取CSRF token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+document.getElementById('checkout-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(e.target);
+    const messageDiv = document.getElementById('message');
+    const csrftoken = getCookie('csrftoken');
+    
+    try {
+        const response = await fetch('{% url "create_order" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify({
+                shipping_address: formData.get('shipping_address'),
+                contact_phone: formData.get('contact_phone')
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            messageDiv.innerHTML = '<div class="alert alert-success">订单创建成功！订单号：' + data.order_number + '</div>';
+            setTimeout(() => {
+                window.location.href = '/chatbot/shop/orders/' + data.order_id + '/';
+            }, 2000);
+        } else {
+            messageDiv.innerHTML = '<div class="alert alert-error">' + data.message + '</div>';
+        }
+    } catch (error) {
+        messageDiv.innerHTML = '<div class="alert alert-error">操作失败，请重试</div>';
+    }
+});
+</script>
+{% endblock %}
+

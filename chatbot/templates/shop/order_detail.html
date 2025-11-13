@@ -1,0 +1,365 @@
+{% extends 'shop/base.html' %}
+
+{% block title %}订单详情 - 在线商城{% endblock %}
+
+{% block extra_css %}
+<style>
+    .order-detail-container {
+        background: white;
+        padding: 30px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .order-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-bottom: 20px;
+        border-bottom: 2px solid #f0f0f0;
+        margin-bottom: 30px;
+    }
+    
+    .order-number {
+        font-size: 24px;
+        font-weight: bold;
+    }
+    
+    .order-status {
+        padding: 10px 20px;
+        border-radius: 20px;
+        font-size: 16px;
+        font-weight: bold;
+    }
+    
+    .info-section {
+        margin-bottom: 30px;
+    }
+    
+    .info-section h3 {
+        margin-bottom: 15px;
+        color: #333;
+    }
+    
+    .info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 5px;
+    }
+    
+    .info-item strong {
+        display: block;
+        color: #666;
+        margin-bottom: 5px;
+        font-size: 14px;
+    }
+    
+    .items-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 20px;
+    }
+    
+    .items-table th,
+    .items-table td {
+        padding: 15px;
+        text-align: left;
+        border-bottom: 1px solid #ddd;
+    }
+    
+    .items-table th {
+        background: #f8f9fa;
+        font-weight: bold;
+    }
+    
+    .order-total {
+        text-align: right;
+        padding: 20px 0;
+        border-top: 2px solid #333;
+        font-size: 24px;
+        font-weight: bold;
+    }
+    
+    .order-total .amount {
+        color: #ff6b6b;
+        font-size: 32px;
+    }
+    
+    .back-link {
+        display: inline-block;
+        margin-bottom: 20px;
+        color: #007bff;
+        text-decoration: none;
+    }
+    
+    .back-link:hover {
+        text-decoration: underline;
+    }
+    
+    .btn-pay {
+        padding: 10px 30px;
+        background: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: background-color 0.3s;
+    }
+    
+    .btn-pay:hover {
+        background: #45a049;
+    }
+    
+    .btn-pay:active {
+        background: #3d8b40;
+    }
+    
+    .payment-modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 1000;
+        justify-content: center;
+        align-items: center;
+    }
+    
+    .payment-modal.active {
+        display: flex;
+    }
+    
+    .payment-content {
+        background: white;
+        padding: 40px;
+        border-radius: 10px;
+        text-align: center;
+        max-width: 400px;
+    }
+    
+    .payment-content h3 {
+        margin-bottom: 20px;
+        color: #333;
+    }
+    
+    .payment-amount {
+        font-size: 36px;
+        color: #ff6b6b;
+        margin: 20px 0;
+        font-weight: bold;
+    }
+    
+    .payment-buttons {
+        display: flex;
+        gap: 15px;
+        margin-top: 30px;
+    }
+    
+    .payment-buttons button {
+        flex: 1;
+        padding: 15px;
+        border: none;
+        border-radius: 5px;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+    
+    .confirm-pay {
+        background: #4CAF50;
+        color: white;
+    }
+    
+    .confirm-pay:hover {
+        background: #45a049;
+    }
+    
+    .cancel-pay {
+        background: #f0f0f0;
+        color: #666;
+    }
+    
+    .cancel-pay:hover {
+        background: #e0e0e0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<a href="{% url 'order_list' %}" class="back-link">← 返回订单列表</a>
+
+<div class="order-detail-container">
+    <div class="order-header">
+        <div class="order-number">订单 {{ order.order_number }}</div>
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <span class="order-status status-{{ order.status }}">{{ order.get_status_display }}</span>
+            {% if order.status == 'pending' %}
+                <button onclick="payOrder({{ order.id }})" class="btn-pay">立即支付</button>
+            {% endif %}
+        </div>
+    </div>
+    
+    <div class="info-section">
+        <h3> 订单信息</h3>
+        <div class="info-grid">
+            <div class="info-item">
+                <strong>下单时间</strong>
+                {{ order.created_at|date:"Y-m-d H:i:s" }}
+            </div>
+            <div class="info-item">
+                <strong>订单状态</strong>
+                {{ order.get_status_display }}
+            </div>
+            <div class="info-item">
+                <strong>订单总额</strong>
+                <span style="color: #ff6b6b; font-size: 20px; font-weight: bold;">¥{{ order.total_amount }}</span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="info-section">
+        <h3> 收货信息</h3>
+        <div class="info-grid">
+            <div class="info-item">
+                <strong>收货地址</strong>
+                {{ order.shipping_address }}
+            </div>
+            <div class="info-item">
+                <strong>联系电话</strong>
+                {{ order.contact_phone }}
+            </div>
+        </div>
+    </div>
+    
+    <div class="info-section">
+        <h3> 商品清单</h3>
+        <table class="items-table">
+            <thead>
+                <tr>
+                    <th>商品名称</th>
+                    <th>单价</th>
+                    <th>数量</th>
+                    <th>小计</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in order.items.all %}
+                <tr>
+                    <td>
+                        <strong>{{ item.product.name }}</strong>
+                        <div style="color: #666; font-size: 14px;">{{ item.product.description|truncatewords:8 }}</div>
+                    </td>
+                    <td>¥{{ item.price }}</td>
+                    <td>x {{ item.quantity }}</td>
+                    <td>¥{{ item.get_subtotal }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        
+        <div class="order-total">
+            合计：<span class="amount">¥{{ order.total_amount }}</span>
+        </div>
+    </div>
+</div>
+
+<!-- 支付弹窗 -->
+<div id="payment-modal" class="payment-modal">
+    <div class="payment-content">
+        <h3>确认支付</h3>
+        <p>订单金额：</p>
+        <div class="payment-amount">¥{{ order.total_amount }}</div>
+        <p style="color: #666; margin-top: 15px;">点击确认即可完成支付</p>
+        <div class="payment-buttons">
+            <button class="cancel-pay" onclick="closePaymentModal()">取消</button>
+            <button class="confirm-pay" onclick="confirmPayment()">确认支付</button>
+        </div>
+    </div>
+</div>
+
+<div id="message" style="margin-top: 20px;"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 获取CSRF token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+let currentOrderId = null;
+
+function payOrder(orderId) {
+    currentOrderId = orderId;
+    document.getElementById('payment-modal').classList.add('active');
+}
+
+function closePaymentModal() {
+    document.getElementById('payment-modal').classList.remove('active');
+    currentOrderId = null;
+}
+
+async function confirmPayment() {
+    if (!currentOrderId) return;
+    
+    const csrftoken = getCookie('csrftoken');
+    const messageDiv = document.getElementById('message');
+    
+    try {
+        const response = await fetch('{% url "pay_order" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify({
+                order_id: currentOrderId
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            closePaymentModal();
+            messageDiv.innerHTML = '<div class="alert alert-success">🎉 ' + data.message + ' 页面即将刷新...</div>';
+            setTimeout(() => {
+                location.reload();
+            }, 1500);
+        } else {
+            closePaymentModal();
+            messageDiv.innerHTML = '<div class="alert alert-error">❌ ' + data.message + '</div>';
+        }
+    } catch (error) {
+        closePaymentModal();
+        messageDiv.innerHTML = '<div class="alert alert-error">❌ 支付失败，请重试</div>';
+    }
+}
+
+// 点击模态框外部关闭
+document.getElementById('payment-modal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closePaymentModal();
+    }
+});
+</script>
+{% endblock %}
+

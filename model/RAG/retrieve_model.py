@@ -63,7 +63,8 @@ class Retrievemodel(Modelbase):
         # self._loader = PyPDFDirectoryLoader
         self._text_splitter = RecursiveCharacterTextSplitter
         # self._embedding = OpenAIEmbeddings()
-        self._embedding = ModelScopeEmbeddings(model_id=self._embedding_model_path)
+        # ModelScopeEmbeddings 只能接受官方模型名
+        self._embedding = ModelScopeEmbeddings(model_id=self._embedding_model_name)
         self._data_path = Config.get_instance().get_with_nested_params(
             "Knowledge-base-path"
         )
@@ -376,4 +377,4 @@ class Retrievemodel(Modelbase):
         return file_path
 
 
-INSTANCE = Retrievemodel()
+#INSTANCE = Retrievemodel()

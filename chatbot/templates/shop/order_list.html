@@ -1,0 +1,146 @@
+{% extends 'shop/base.html' %}
+
+{% block title %}我的订单 - 在线商城{% endblock %}
+
+{% block extra_css %}
+<style>
+    .order-list {
+        background: white;
+        padding: 30px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .order-card {
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        overflow: hidden;
+    }
+    
+    .order-header {
+        background: #f8f9fa;
+        padding: 15px 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid #ddd;
+    }
+    
+    .order-number {
+        font-weight: bold;
+        color: #333;
+    }
+    
+    .order-status {
+        padding: 5px 15px;
+        border-radius: 15px;
+        font-size: 14px;
+    }
+    
+    .status-pending {
+        background: #fff3cd;
+        color: #856404;
+    }
+    
+    .status-paid {
+        background: #d1ecf1;
+        color: #0c5460;
+    }
+    
+    .status-shipping {
+        background: #d4edda;
+        color: #155724;
+    }
+    
+    .status-completed {
+        background: #d4edda;
+        color: #155724;
+    }
+    
+    .status-cancelled {
+        background: #f8d7da;
+        color: #721c24;
+    }
+    
+    .order-body {
+        padding: 20px;
+    }
+    
+    .order-info {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+    
+    .order-info-item {
+        color: #666;
+    }
+    
+    .order-info-item strong {
+        display: block;
+        color: #333;
+        margin-bottom: 5px;
+    }
+    
+    .order-actions {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+    }
+    
+    .empty-orders {
+        text-align: center;
+        padding: 60px 20px;
+        color: #666;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<h2>📦 我的订单</h2>
+
+<div class="order-list">
+    {% if orders %}
+        {% for order in orders %}
+        <div class="order-card">
+            <div class="order-header">
+                <div class="order-number">订单号：{{ order.order_number }}</div>
+                <span class="order-status status-{{ order.status }}">{{ order.get_status_display }}</span>
+            </div>
+            <div class="order-body">
+                <div class="order-info">
+                    <div class="order-info-item">
+                        <strong>订单金额</strong>
+                        <span style="color: #ff6b6b; font-size: 20px; font-weight: bold;">¥{{ order.total_amount }}</span>
+                    </div>
+                    <div class="order-info-item">
+                        <strong>下单时间</strong>
+                        {{ order.created_at|date:"Y-m-d H:i:s" }}
+                    </div>
+                    <div class="order-info-item">
+                        <strong>收货地址</strong>
+                        {{ order.shipping_address|truncatewords:10 }}
+                    </div>
+                    <div class="order-info-item">
+                        <strong>联系电话</strong>
+                        {{ order.contact_phone }}
+                    </div>
+                </div>
+                <div class="order-actions">
+                    <a href="{% url 'order_detail' order.id %}" class="btn">查看详情</a>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="empty-orders">
+            <h3>📦 还没有订单</h3>
+            <p>快去挑选心仪的商品吧</p>
+            <a href="{% url 'product_list' %}" class="btn">去购物</a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
