@@ -377,4 +377,4 @@ class Retrievemodel(Modelbase):
         return file_path
 
 
-#INSTANCE = Retrievemodel()
+INSTANCE = Retrievemodel()

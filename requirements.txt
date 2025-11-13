@@ -35,3 +35,5 @@ whisper==1.1.10
 openai-whisper==20240930
 redis==5.0.8
 passlib[bcrypt]
+requests>=2.32.3
+beautifulsoup4>=4.12.3

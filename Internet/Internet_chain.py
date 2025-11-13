@@ -3,16 +3,45 @@ from Internet.retrieve_Internet import retrieve_html
 from client.clientfactory import Clientfactory
 from env import get_app_root
 
-import re
 import os
-import requests
+import re
 import shutil
 import threading
-from typing import List
+from typing import Dict
+
+import requests
 from bs4 import BeautifulSoup
 from urllib3.exceptions import InsecureRequestWarning
 
 _SAVE_PATH = os.path.join(get_app_root(), "data/cache/internet")
+_REQUEST_TIMEOUT = 8
+_DETAIL_TIMEOUT = 10
+_LINKS_LOCK = threading.Lock()
+
+
+def _safe_filename(title: str, max_len: int = 80) -> str:
+    sanitized = re.sub(r"[\\/:*?\"<>|]+", "_", title)
+    sanitized = sanitized.strip().strip(".")
+    if not sanitized:
+        sanitized = "page"
+    if len(sanitized) > max_len:
+        sanitized = sanitized[:max_len]
+    return sanitized
+
+
+def _write_html_file(title: str, content: str, link_map: Dict[str, str], url: str) -> None:
+    safe_name = _safe_filename(title)
+    filepath = os.path.join(_SAVE_PATH, f"{safe_name}.html")
+    counter = 1
+    while os.path.exists(filepath):
+        filepath = os.path.join(_SAVE_PATH, f"{safe_name}_{counter}.html")
+        counter += 1
+
+    with open(filepath, "w", encoding="utf-8") as file_obj:
+        file_obj.write(content)
+
+    with _LINKS_LOCK:
+        link_map[url] = title
 
 
 def InternetSearchChain(question, history):
@@ -28,7 +57,7 @@ def InternetSearchChain(question, history):
     requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
     threads = []
-    links = {}
+    links: Dict[str, str] = {}
 
     # 为每个问题创建单独的线程
     for question in question_list:
@@ -44,15 +73,25 @@ def InternetSearchChain(question, history):
     for thread in threads:
         thread.join()
 
+    docs_available = False
+    _context = ""
     if has_html_files(_SAVE_PATH):
-        docs, _context = retrieve_html(question)
-        prompt = f"根据你现有的知识，辅助以搜索到的文件资料：\n{_context}\n 回答问题：\n{question}\n 尽可能多的覆盖到文件资料"
+        try:
+            docs, _context = retrieve_html(question)
+            docs_available = bool(docs)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[internet-rag] retrieve_html failed: {exc}")
+
+    if docs_available and _context:
+        prompt = (
+            f"根据你现有的知识，辅助以搜索到的文件资料：\n{_context}\n 回答问题：\n{question}\n 尽可能多的覆盖到文件资料"
+        )
     else:
         prompt = question
 
     response = Clientfactory().get_client().chat_with_ai_stream(prompt)
 
-    return response, links, has_html_files(_SAVE_PATH)
+    return response, links, bool(links)
 
 
 def search_bing(query, links, num_results=3):
@@ -64,12 +103,21 @@ def search_bing(query, links, num_results=3):
         "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:22.0) Gecko/20100101 Firefox/22.0",
     }
     search_urls = [
-        f"https://cn.bing.com/search?q={query}",
-        f"https://www.bing.com/search?q={query}",
+        "https://cn.bing.com/search",
+        "https://www.bing.com/search",
     ]
     for search_url in search_urls:
         flag = 0
-        response = requests.get(search_url, headers=headers)
+        try:
+            response = requests.get(
+                search_url,
+                headers=headers,
+                params={"q": query},
+                timeout=_REQUEST_TIMEOUT,
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"请求 {search_url} 失败：{exc}")
+            continue
 
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, "html.parser")
@@ -81,29 +129,22 @@ def search_bing(query, links, num_results=3):
                 link = item.find("a")["href"].split("#")[0]  # 删除 '#' 后的部分
 
                 try:
-                    # 禁用 SSL 验证的警告
-                    response = requests.get(link, timeout=10)
-                    if response.status_code == 200:
-                        filename = f"{_SAVE_PATH}/{title}.html"
-                        if response.text is not None:
-                            with open(filename, "w", encoding="utf-8") as f:
-                                links[link] = title
-                                f.write(response.text)
-                                flag += 1
-                            print(f"Downloaded and saved: {link} as {filename}")
-                        else:
-                            print(f"Failed to download {link}: Empty content")
+                    response = requests.get(link, timeout=_DETAIL_TIMEOUT)
+                    if response.status_code == 200 and response.text:
+                        _write_html_file(title, response.text, links, link)
+                        flag += 1
+                        print(f"下载成功: {link}")
                     else:
                         print(
-                            f"Failed to download {link}: Status code {response.status_code}"
+                            f"下载 {link} 失败，状态码 {response.status_code}"
                         )
-                except Exception as e:
-                    print(f"Error downloading {link}: {e}")
+                except Exception as exc:  # noqa: BLE001
+                    print(f"下载 {link} 出错: {exc}")
             # 检查是否达到了期望的结果数
             if flag < num_results:
                 print("访问bing失败，请检查网络代理")
         else:
-            print("Error: ", response.status_code)
+            print("访问 Bing 失败，状态码:", response.status_code)
 
 
 def search_baidu(query, links, num_results=3):
@@ -114,10 +155,19 @@ def search_baidu(query, links, num_results=3):
         "Connection": "keep-alive",
         "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:22.0) Gecko/20100101 Firefox/22.0",
     }
-    search_url = f"https://www.baidu.com/s?wd={query}"  # 百度搜索URL
+    base_url = "https://www.baidu.com/s"
 
     flag = 0
-    response = requests.get(search_url, headers=headers)
+    try:
+        response = requests.get(
+            base_url,
+            headers=headers,
+            params={"wd": query},
+            timeout=_REQUEST_TIMEOUT,
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"请求百度失败：{exc}")
+        return
 
     if response.status_code == 200:
         soup = BeautifulSoup(response.text, "html.parser")
@@ -127,33 +177,27 @@ def search_baidu(query, links, num_results=3):
             if flag >= num_results:
                 break
             try:
-                # 获取标题和链接
                 title = item.find("h3").text
-                link = item.find("a")["href"].split("#")[0]  # 删除 '#' 后的部分
+                link = item.find("a")["href"].split("#")[0]
 
-                # 禁用 SSL 验证的警告
-                response = requests.get(link, timeout=10)
-
-                if response.status_code == 200:
-                    filename = f"{_SAVE_PATH}/{title}.html"
-                    if response.text is not None:
-                        with open(filename, "w", encoding="utf-8") as f:
-                            links[link] = title
-                            f.write(response.text)
-                            flag += 1
-                        print(f"Downloaded and saved: {link} as {filename}")
+                try:
+                    response = requests.get(link, timeout=_DETAIL_TIMEOUT)
+                    if response.status_code == 200 and response.text:
+                        _write_html_file(title, response.text, links, link)
+                        flag += 1
+                        print(f"下载成功: {link}")
                     else:
-                        print(f"Failed to download {link}: Empty content")
-                else:
-                    print(
-                        f"Failed to download {link}: Status code {response.status_code}"
-                    )
-            except Exception as e:
-                print(f"Error downloading {link}: {e}")
+                        print(
+                            f"下载 {link} 失败，状态码 {response.status_code}"
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    print(f"下载 {link} 出错: {exc}")
+            except Exception as exc:  # noqa: BLE001
+                print(f"解析百度搜索结果条目失败: {exc}")
 
         # 检查是否达到了期望的结果数
         if flag < num_results:
-            print("访问百度失败，请检查网络代理制")
+            print("访问百度失败，请检查网络环境")
     else:
         print("Error: ", response.status_code)
 
